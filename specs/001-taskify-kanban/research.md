@@ -81,15 +81,19 @@ unknowns. Each entry records a decision the stack left open. Stdlib APIs were ch
 
 - **Decision**:
   - Request bodies: `http.MaxBytesReader` at 64 KiB (largest valid body is ~20 KB: 5,000
-    four-byte characters); `Content-Type` must be `application/json`; `json.Decoder` with
-    `DisallowUnknownFields`; exactly one JSON value (a second `Decode` must return `io.EOF`).
+    four-byte characters); `Content-Type` must be `application/json`; the body is read as
+    `map[string]json.RawMessage` holding exactly one JSON object; every key must be listed for
+    the route and no value may be `null`; then it is unmarshalled into the route's struct, where
+    a wrong JSON type is refused. A bad listed key is named in the error's `field`; an unlisted
+    key never is, so the error never repeats request text.
   - "Characters" = Unicode code points (`utf8.RuneCountInString`).
   - "Only spaces counts as empty" = `strings.TrimSpace(v) == ""`. Stored text is never trimmed
     or changed (constitution: reject, do not clean).
   - "No control characters" = reject any rune where `unicode.IsControl` is true, except `\n` in
     multi-line fields. Browsers normalise textarea values to `\n`, so `\r` is rejected too.
   - Project name uniqueness: `strings.EqualFold` against every other project.
-  - Path IDs: `strconv.Atoi`; anything not a positive integer naming an existing record → 404.
+  - Path IDs and `X-Taskify-User`: `strconv.Atoi` plus `strconv.Itoa(n) == s`, so `+1` and
+    `01` are refused. A path ID that is not a positive integer naming an existing record → 404.
   - Error messages are fixed strings naming the field and rule; they never include the input.
 - **Rationale**: Every rule in the spec's Input Validation table maps to one stdlib call, and
   each is testable on its own.

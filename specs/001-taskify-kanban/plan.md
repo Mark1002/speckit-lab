@@ -27,7 +27,7 @@ after every change ([research.md](./research.md) R3)
 **Testing**: `go test ./...` with `testing` and `net/http/httptest`; browser flows checked by
 hand with [quickstart.md](./quickstart.md)
 
-**Target Platform**: One desktop computer (macOS, Linux, or Windows) running the binary, with a
+**Target Platform**: One desktop computer (macOS or Linux) running the binary, with a
 modern desktop browser on the same computer
 
 **Project Type**: Web application — one Go binary serving the REST API and static frontend
@@ -85,9 +85,9 @@ specs/001-taskify-kanban/
 
 ```text
 go.mod              # module taskify, go 1.25, no requires
-main.go             # flags (-port, -data), open store, listen on 127.0.0.1, slog setup
+main.go             # calls parseConfig, open store, listen on 127.0.0.1, slog setup
 api.go              # handler: Host check, security headers, CrossOriginProtection, routes
-validate.go         # text/ID/status/assignee rules from data-model.md
+validate.go         # text/status/assignee rules and parseConfig (-port, -data) from data-model.md
 store.go            # in-memory data, mutex, JSON load, atomic save, rollback
 seed.go             # five users, sample projects and tasks
 web/

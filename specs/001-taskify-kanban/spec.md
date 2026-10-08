@@ -242,7 +242,7 @@ is limited by FR-006.
 
 | Data | Who can see it | Who can change it |
 | ---- | -------------- | ----------------- |
-| Users (name, role) | All five users | Nobody; the five users are fixed |
+| Users (name, role) | All five users, and the user picker, before a user is picked | Nobody; the five users are fixed |
 | Projects | All five users | Any user can create one. Editing and deleting are out of scope. |
 | Tasks | All five users | Any user can create, edit, assign, and move any task |
 | Comments | All five users | Any user can add one. Only its author can edit or delete it. |

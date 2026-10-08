@@ -26,6 +26,10 @@ Any field not listed for a route is refused with 400. System-set fields (`id`, `
 always refused. A field sent as `null` is also refused with 400; to use a default or leave a value
 unchanged, leave the field out.
 
+When a listed field is `null` or has the wrong JSON type, the 400 error's `field` is that field's
+name. When a field is not listed for the route, the 400 error has no `field` and its message
+does not name it.
+
 ## Field values
 
 | Column name (spec) | `status` value |
@@ -44,7 +48,8 @@ unchanged, leave the field out.
 { "error": { "field": "title", "message": "title must be 1 to 200 characters" } }
 ```
 
-- `field` is present only when one request field caused the error.
+- `field` is present only when one listed request field caused the error. It is never set to the
+  name of a field that is not listed for the route.
 - `message` is a fixed string naming the field and rule. It never contains the submitted value,
   an unknown field's name, or internal details (paths, stack traces, Go error text).
 - 500 always returns `{ "error": { "message": "something went wrong; nothing was saved" } }`.

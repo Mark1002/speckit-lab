@@ -89,8 +89,10 @@ These apply to every text rule above ([research.md](./research.md) R7):
   stored value is exactly what was sent; nothing is trimmed.
 - **Single line** = no `\n`.
 - **No control chars** = no rune with `unicode.IsControl` true, except `\n` where allowed.
-- Unknown JSON fields, wrong JSON types, a second JSON value, or a body over 64 KiB are rejected
-  before any field is checked.
+- Before any field rule is checked, a request body is refused if it is not `application/json`,
+  is over 64 KiB, is not exactly one JSON object, has a field not listed for its route (no
+  `field` in the error), or has a listed field that is `null` or the wrong JSON type (`field` set
+  to that field). See [contracts/api.md](./contracts/api.md) §Request rules.
 
 ## Task status transitions
 
