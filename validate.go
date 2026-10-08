@@ -49,6 +49,7 @@ func checkStatus(v string) *fieldError {
 
 func validUser(id int) bool { return id >= 1 && id <= len(users) }
 
+// 0 means unassigned: null is refused for every field, so "no one" needs a real value.
 func checkAssignee(id int) *fieldError {
 	if id == 0 || validUser(id) {
 		return nil

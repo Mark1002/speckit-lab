@@ -150,11 +150,12 @@ empty columns; a name differing only in case is refused (quickstart step 9).
 
 ## Phase 7: Polish & cross-cutting
 
-- [ ] T032 Run `gofmt -l .` (must print nothing), `go vet ./...`, and `go test ./...` over all `*.go` files at the repository root; fix every finding
-- [ ] T033 Constitution review gate on all `*.go` and `web/*` files: every route validates its inputs and checks access server-side; `go.mod` still has no `require`; comments exist only for the planned non-obvious reasons (DNS rebinding `Host` check, header identity without login, atomic rename, save rollback, `assigneeId` 0, 64 KiB cap, fixed `127.0.0.1`); no banner or restating comments; compare `grep -cE '^\s*//' *.go` against line counts to keep density low
-- [ ] T034 Check SC-004 using `specs/001-taskify-kanban/quickstart.md` setup: create 200 tasks in one project with a `curl` loop against `POST /api/projects/{pid}/tasks`, open that board in the browser, and confirm it is fully shown within 2 seconds (browser dev tools network/performance timing)
-- [ ] T035 Run every check in `specs/001-taskify-kanban/quickstart.md` on a fresh `taskify.json`: build and tests, manual browser steps 1–10, the terminal security checks, and the second-computer connection check (SC-009)
+- [X] T032 Run `gofmt -l .` (must print nothing), `go vet ./...`, and `go test ./...` over all `*.go` files at the repository root; fix every finding
+- [X] T033 Constitution review gate on all `*.go` and `web/*` files: every route validates its inputs and checks access server-side; `go.mod` still has no `require`; comments exist only for the planned non-obvious reasons (DNS rebinding `Host` check, header identity without login, atomic rename, save rollback, `assigneeId` 0, 64 KiB cap, fixed `127.0.0.1`); no banner or restating comments; compare `grep -cE '^\s*//' *.go` against line counts to keep density low
+- [X] T034 Check SC-004 using `specs/001-taskify-kanban/quickstart.md` setup: create 200 tasks in one project with a `curl` loop against `POST /api/projects/{pid}/tasks`, open that board in the browser, and confirm it is fully shown within 2 seconds (browser dev tools network/performance timing)
+- [X] T035 Run every check in `specs/001-taskify-kanban/quickstart.md` on a fresh `taskify.json`: build and tests, manual browser steps 1–10, the terminal security checks, and the second-computer connection check (SC-009)
 - [ ] T036 Run `go run golang.org/x/vuln/cmd/govulncheck@latest ./...` for the module in `go.mod` at the repository root; any finding blocks the release (research R12)
+  - Blocked by choice: this project stays on go1.25.0; govulncheck reports 20 standard library vulnerabilities (all fixed in go1.25.13). Not released.
 
 ---
 

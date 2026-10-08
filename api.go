@@ -212,7 +212,6 @@ func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 var errNotAuthor = errors.New("not the comment's author")
 
-// finish turns the error from a store.update into the matching response.
 func (a *server) finish(w http.ResponseWriter, err error, status int, out any) {
 	var fe *fieldError
 	switch {
@@ -379,7 +378,6 @@ func (a *server) createComment(w http.ResponseWriter, r *http.Request, user int)
 	a.finish(w, err, http.StatusCreated, out)
 }
 
-// commentIDs reads pid, tid and cid from the path; any bad one means the comment does not exist.
 func commentIDs(r *http.Request) (pid, tid, cid int, ok bool) {
 	pid, okP := pathID(r, "pid")
 	tid, okT := pathID(r, "tid")

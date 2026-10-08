@@ -77,9 +77,13 @@ curl -si -X POST http://127.0.0.1:8080/api/projects \
   -H 'Sec-Fetch-Site: cross-site' -H 'X-Taskify-User: 1' \
   -H 'Content-Type: application/json' -d '{"name":"x"}' | head -1
 
-# SC-006: user 3 deletes a comment written by user 2 → 403 (use real IDs from step 8)
+# SC-006: user 3 deletes a comment written by user 2 → 403
+# Makes its own comment first, so it does not depend on step 8.
+cid=$(curl -s -X POST http://127.0.0.1:8080/api/projects/1/tasks/4/comments \
+  -H 'X-Taskify-User: 2' -H 'Content-Type: application/json' \
+  -d '{"text":"SC-006 check"}' | sed -E 's/.*"id":([0-9]+).*/\1/')
 curl -si -X DELETE -H 'X-Taskify-User: 3' \
-  http://127.0.0.1:8080/api/projects/1/tasks/4/comments/20 | head -1
+  "http://127.0.0.1:8080/api/projects/1/tasks/4/comments/$cid" | head -1
 
 # SC-009: only the loopback address is listening
 lsof -nP -iTCP:8080 -sTCP:LISTEN     # expect 127.0.0.1:8080, never *:8080
