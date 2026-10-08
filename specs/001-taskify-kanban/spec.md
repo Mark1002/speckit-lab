@@ -8,6 +8,21 @@
 
 **Input**: User description: "Develop Taskify, a team productivity platform where predefined users create projects, assign tasks, comment, and move tasks across Kanban columns (To Do, In Progress, In Review, Done). Five users (one product manager, four engineers), three sample projects, no login for this first phase."
 
+## Clarifications
+
+### Session 2026-10-08
+
+- Q: Who is allowed to move a task from one column to another? → A: Any of the five users can
+  move any task, whoever it is assigned to.
+- Q: Who is allowed to choose or change the person a task is assigned to? → A: Any of the five
+  users can assign any task to anyone, change the assignee, or clear it.
+- Q: After a comment is edited or deleted, what should other people see? → A: No marks. An edited
+  comment shows only the new text; a deleted comment disappears completely.
+- Q: Should a task's column and its assignee affect each other? → A: No. Any task can be in any
+  column, assigned or not, and moving a task never changes its assignee.
+- Q: Where should people see who moved a task or changed its assignee? → A: Nowhere. Only the
+  task's creator and each comment's author are recorded and shown; there is no change history.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Pick a user and move tasks on a project board (Priority: P1)
@@ -126,6 +141,8 @@ a different user with four empty columns.
 - Text looks like formatting or code (for example `<b>hi</b>` or `<script>`): it is saved and
   shown exactly as typed, as plain text, and never acts as formatting or code.
 - A task is moved to the column it is already in: nothing changes and no error is shown.
+- An unassigned task is moved to In Progress or Done: the move is allowed and the task stays
+  unassigned.
 - A request names a column that is not one of the four, or a user who is not one of the five: it
   is refused and nothing changes.
 - A request names a project, task, or comment that does not exist, or a task under the wrong
@@ -151,8 +168,9 @@ a different user with four empty columns.
 - **FR-002**: System MUST ask a person to pick one of the five users before showing or changing
   any project data. No password is asked for in phase 1.
 - **FR-003**: Users MUST be able to switch to a different user at any time.
-- **FR-004**: System MUST record every change (project, task, assignment, move, comment) as made by
-  the currently picked user.
+- **FR-004**: System MUST record the currently picked user as the creator of each new project and
+  task, and as the author of each new comment. Column moves, assignee changes, and edits are not
+  tracked by person, and no change history is kept or shown.
 - **FR-005**: System MUST apply the Access Rules table below to every request, including requests
   that do not come from Taskify's own screens.
 - **FR-006**: System MUST be reachable only from the computer it runs on. Any attempt to reach it
@@ -170,17 +188,21 @@ a different user with four empty columns.
 - **FR-010**: Each project MUST have a board with exactly four columns, always in this order:
   To Do, In Progress, In Review, Done.
 - **FR-011**: Every task MUST be in exactly one column at a time. A new task MUST start in To Do.
+  A task's column and its assignee MUST be independent: any task can be in any column with or
+  without an assignee, and moving a task MUST NOT change its assignee.
 - **FR-012**: Within a column, tasks MUST be listed by creation time, oldest first.
 - **FR-013**: Each task card MUST show the task title and the assignee's name, or "Unassigned".
 - **FR-014**: Tasks assigned to the currently picked user MUST look visibly different from other
   tasks.
-- **FR-015**: Users MUST be able to move a task from any column to any other column. They MUST be
-  able to do this by choosing the target column directly, not only by dragging.
+- **FR-015**: Any of the five users MUST be able to move any task, whoever it is assigned to, from
+  any column to any other column. They MUST be able to do this by choosing the target column
+  directly, not only by dragging.
 - **FR-016**: Users MUST be able to create a task with a title, an optional description, and an
   optional assignee.
 - **FR-017**: Users MUST be able to edit a task's title and description.
-- **FR-018**: Users MUST be able to assign a task to one of the five users, change the assignee,
-  or remove the assignee. A task has at most one assignee.
+- **FR-018**: Any of the five users MUST be able to assign any task to any of the five users
+  (including themselves), change the assignee, or remove the assignee. A task has at most one
+  assignee.
 - **FR-019**: Users MUST be able to open a task to see its title, description, assignee, column,
   creator, and comments.
 
@@ -189,7 +211,9 @@ a different user with four empty columns.
 - **FR-020**: Users MUST be able to add a comment to any task.
 - **FR-021**: System MUST show each comment with its author's name and the time it was posted,
   oldest first.
-- **FR-022**: Users MUST be able to edit and delete their own comments.
+- **FR-022**: Users MUST be able to edit and delete their own comments. An edited comment MUST
+  show only its new text, with no "edited" mark, and keep its original posted time. A deleted
+  comment MUST disappear completely, leave no note behind, and not come back after a restart.
 - **FR-023**: System MUST refuse any attempt to edit or delete a comment by anyone other than its
   author, and leave the comment unchanged.
 
@@ -289,5 +313,5 @@ empty.
 - In phase 1 the team shares the one computer Taskify runs on and takes turns, switching users as
   they go.
 - Out of scope for phase 1: login and passwords; adding, changing, or removing users; editing or
-  deleting projects; deleting tasks; reordering tasks inside a column; attachments; due dates;
-  labels; notifications; search; and layouts made for phones.
+  deleting projects; deleting tasks; reordering tasks inside a column; a history of changes to a
+  task; attachments; due dates; labels; notifications; search; and layouts made for phones.
