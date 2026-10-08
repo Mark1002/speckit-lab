@@ -25,7 +25,7 @@ To start over with fresh sample data, stop the server and delete `taskify.json`.
 
 | Spec item | Covered by |
 | --------- | ---------- |
-| SC-005, FR-024, FR-025 | One or more failing values per Input Validation rule → 400, nothing saved |
+| SC-005, FR-024, FR-025 | One or more failing values per Input Validation rule → 400, nothing saved; every length limit: exactly the limit accepted, limit + 1 → 400 |
 | SC-006, FR-023 | Non-author comment `PATCH`/`DELETE` → 403, comment unchanged |
 | SC-007, FR-026 | Text with `<script>` round-trips unchanged; `app.js` contains no `innerHTML` |
 | SC-003, FR-028, FR-029 | Reopen the store from the same file: data kept, sample data not added again |

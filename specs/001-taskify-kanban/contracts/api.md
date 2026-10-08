@@ -13,7 +13,7 @@ Base URL: `http://127.0.0.1:{port}` (default port 8080). Field rules are defined
 | `X-Taskify-User` is `1`–`5` (every route except `GET /api/users`) | 401 |
 | `POST`/`PATCH`: `Content-Type` is `application/json` (parameters allowed) | 415 |
 | Body ≤ 64 KiB | 413 |
-| Body is one JSON object, known fields only, correct JSON types | 400 |
+| Body is one JSON object with only the fields listed for that route, no `null` values, correct JSON types | 400 |
 | Path IDs name existing records, nested correctly (task in project, comment in task) | 404 |
 | Comment edit/delete: `X-Taskify-User` equals the comment's `authorId` | 403 |
 | Every field passes its rule in data-model.md | 400 |
@@ -21,7 +21,22 @@ Base URL: `http://127.0.0.1:{port}` (default port 8080). Field rules are defined
 Checks run top to bottom; the first failure is returned and nothing is saved. Ownership (403)
 is checked before field rules, so a non-author learns nothing about validation.
 
-In request bodies, an optional field that is absent or `null` means "not provided".
+Any field not listed for a route is refused with 400. System-set fields (`id`, `projectId`,
+`taskId`, `authorId`, `createdBy`, `createdAt`) are never listed for any route, so sending one is
+always refused. A field sent as `null` is also refused with 400; to use a default or leave a value
+unchanged, leave the field out.
+
+## Field values
+
+| Column name (spec) | `status` value |
+| ------------------ | -------------- |
+| To Do | `todo` |
+| In Progress | `in_progress` |
+| In Review | `in_review` |
+| Done | `done` |
+
+`assigneeId` is `0` for "Unassigned" (the spec's "Empty") or a user ID from 1 to 5. Sending
+`assigneeId: 0` clears the assignee.
 
 ## Error body
 

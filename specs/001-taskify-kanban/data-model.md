@@ -69,6 +69,17 @@ User    1 ── * Project.createdBy, Task.createdBy, Comment.authorId
 User    1 ── * Task.assigneeId   (0..1 per task)
 ```
 
+## Configuration inputs (command-line flags)
+
+| Flag | Default | Rules |
+| ---- | ------- | ----- |
+| `-port` | `8080` | Integer from 1 to 65535 |
+| `-data` | `taskify.json` | Not empty; must not name a directory; its parent directory must already exist |
+
+Any other command-line argument is refused. A broken rule makes Taskify exit with an error that
+names the flag, before it reads any data or listens on any port. The listen host is always
+`127.0.0.1` and has no flag ([research.md](./research.md) R6).
+
 ## Validation definitions
 
 These apply to every text rule above ([research.md](./research.md) R7):

@@ -115,6 +115,7 @@ unknowns. Each entry records a decision the stack left open. Stdlib APIs were ch
   details open in a native `<dialog>`. Moving uses native drag-and-drop (`draggable`,
   `dragover`, `drop`) plus a column `<select>` in the task dialog for keyboard users (FR-015).
   Board data is fetched again after every change and on every navigation; there is no polling.
+  Any 401 response clears the stored user ID and returns to the user picker.
 - **Rationale**: No build step, no framework, one binary to run.
 - **Alternatives considered**: Server-rendered `html/template` pages — would also work, but the
   user asked for a REST API consumed by plain JavaScript.
@@ -122,7 +123,8 @@ unknowns. Each entry records a decision the stack left open. Stdlib APIs were ch
 ## R10. Testing
 
 - **Decision**: `testing` + `net/http/httptest` only. Table-driven tests: one case or more per
-  rule in the Input Validation table (SC-005), access tests for comment edit/delete by a
+  rule in the Input Validation table, plus an at-limit and a limit-plus-one case for every
+  length limit (SC-005), access tests for comment edit/delete by a
   non-author (SC-006), missing/unknown user header, bad `Host`, cross-origin `POST`, restart
   persistence and no re-seed (SC-003, FR-029), corrupt file refusal, rollback on failed save.
   One test reads the embedded `app.js` and fails if it contains `innerHTML` (SC-007 guard).

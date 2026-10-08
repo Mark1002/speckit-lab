@@ -288,7 +288,9 @@ empty.
   them the next time they open or refresh the board.
 - **SC-004**: A board with up to 200 tasks is fully shown within 2 seconds of opening it.
 - **SC-005**: For every rule in the Input Validation table, at least one breaking value is tested,
-  and 100% of them are refused with a message that names the field, with nothing saved.
+  and 100% of them are refused with a message that names the field, with nothing saved. For
+  every length limit, a value of exactly the limit is accepted and a value one character over the
+  limit is refused.
 - **SC-006**: 0 successful attempts to edit or delete another user's comment, including attempts
   that do not use Taskify's own screens.
 - **SC-007**: 0 cases where user-entered text is shown as formatting or acts as code.
