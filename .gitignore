@@ -1,0 +1,15 @@
+# Taskify data file, temp files from atomic saves, built binary
+taskify.json
+.taskify-*.tmp
+/taskify
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+*.swp

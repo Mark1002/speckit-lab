@@ -1,0 +1,165 @@
+:root {
+  --ink: #1d2125;
+  --muted: #5e6670;
+  --line: #c9ccd1;
+  --panel: #f2f3f5;
+  --accent: #1a5fb4;
+  --accent-soft: #e6effa;
+  --danger: #b00020;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #fff;
+}
+
+body {
+  margin: 0;
+}
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+
+#bar .brand {
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--ink);
+  margin-right: auto;
+}
+
+#bar .who {
+  color: var(--muted);
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+}
+
+a {
+  color: var(--accent);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--danger);
+  margin: 0.5rem 0;
+}
+
+.error:empty {
+  display: none;
+}
+
+.users,
+.projects {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  max-width: 24rem;
+}
+
+.users button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  text-align: left;
+}
+
+.users .role {
+  color: var(--muted);
+}
+
+.projects a {
+  display: block;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.column {
+  background: var(--panel);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 0.5rem;
+  min-height: 12rem;
+}
+
+.column h2 {
+  font-size: 1rem;
+  margin: 0.25rem 0.25rem 0.5rem;
+}
+
+.column.over {
+  border: 2px dashed var(--accent);
+  background: var(--accent-soft);
+}
+
+.card {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  padding: 0.6rem;
+  text-align: left;
+  cursor: grab;
+}
+
+.card .assignee {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+/* Thicker border plus a tinted background, so "yours" never depends on color alone (FR-014). */
+.card.mine {
+  border: 3px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1.25rem;
+  min-width: 18rem;
+}
+
+dialog label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+dialog select {
+  font: inherit;
+  margin-bottom: 1rem;
+}
