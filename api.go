@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -13,6 +14,8 @@ import (
 	"net/http"
 	"slices"
 	"strconv"
+	"strings"
+	"time"
 )
 
 //go:embed web
@@ -32,8 +35,14 @@ func newHandler(s *store, port int, log *slog.Logger) http.Handler {
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) { a.fail(w, http.StatusNotFound, "", "not found") })
 	mux.HandleFunc("GET /api/users", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, http.StatusOK, users) })
 	mux.HandleFunc("GET /api/projects", a.requireUser(a.listProjects))
+	mux.HandleFunc("POST /api/projects", a.requireUser(a.createProject))
 	mux.HandleFunc("GET /api/projects/{pid}", a.requireUser(a.getBoard))
+	mux.HandleFunc("POST /api/projects/{pid}/tasks", a.requireUser(a.createTask))
+	mux.HandleFunc("GET /api/projects/{pid}/tasks/{tid}", a.requireUser(a.getTask))
 	mux.HandleFunc("PATCH /api/projects/{pid}/tasks/{tid}", a.requireUser(a.patchTask))
+	mux.HandleFunc("POST /api/projects/{pid}/tasks/{tid}/comments", a.requireUser(a.createComment))
+	mux.HandleFunc("PATCH /api/projects/{pid}/tasks/{tid}/comments/{cid}", a.requireUser(a.patchComment))
+	mux.HandleFunc("DELETE /api/projects/{pid}/tasks/{tid}/comments/{cid}", a.requireUser(a.deleteComment))
 
 	// Exact paths only: "GET /" would conflict with "/api/" and panic at start-up.
 	web, _ := fs.Sub(webFS, "web")
@@ -199,14 +208,107 @@ func (a *server) getBoard(w http.ResponseWriter, r *http.Request, user int) {
 	writeJSON(w, http.StatusOK, board)
 }
 
-func (a *server) patchTask(w http.ResponseWriter, r *http.Request, user int) {
-	var in struct {
-		Status *string `json:"status"`
+func now() string { return time.Now().UTC().Format(time.RFC3339) }
+
+var errNotAuthor = errors.New("not the comment's author")
+
+// finish turns the error from a store.update into the matching response.
+func (a *server) finish(w http.ResponseWriter, err error, status int, out any) {
+	var fe *fieldError
+	switch {
+	case err == nil && status == http.StatusNoContent:
+		w.WriteHeader(status)
+	case err == nil:
+		writeJSON(w, status, out)
+	case errors.Is(err, errNotFound):
+		a.fail(w, http.StatusNotFound, "", "not found")
+	case errors.Is(err, errNotAuthor):
+		a.fail(w, http.StatusForbidden, "", "only the comment's author can change it")
+	case errors.As(err, &fe):
+		a.fail(w, http.StatusBadRequest, fe.Field, fe.Message)
+	default:
+		a.serverError(w, err)
 	}
-	if !a.decodeBody(w, r, []string{"status"}, &in) {
+}
+
+func (a *server) createTask(w http.ResponseWriter, r *http.Request, user int) {
+	var in struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		AssigneeID  int    `json:"assigneeId"`
+	}
+	if !a.decodeBody(w, r, []string{"title", "description", "assigneeId"}, &in) {
 		return
 	}
-	if in.Status == nil {
+	pid, ok := pathID(r, "pid")
+	if !ok {
+		a.fail(w, http.StatusNotFound, "", "not found")
+		return
+	}
+	var out Task
+	err := a.store.update(func(d *data) error {
+		if d.project(pid) == nil {
+			return errNotFound
+		}
+		if fe := cmp.Or(
+			checkText("title", in.Title, true, 200, false),
+			checkText("description", in.Description, false, 5000, true),
+			checkAssignee(in.AssigneeID),
+		); fe != nil {
+			return fe
+		}
+		out = Task{
+			ID: d.newID(), ProjectID: pid, Title: in.Title, Description: in.Description,
+			Status: "todo", AssigneeID: in.AssigneeID, CreatedBy: user, CreatedAt: now(),
+		}
+		d.Tasks = append(d.Tasks, out)
+		return nil
+	})
+	a.finish(w, err, http.StatusCreated, out)
+}
+
+func (a *server) getTask(w http.ResponseWriter, r *http.Request, user int) {
+	var detail struct {
+		Task
+		Comments []Comment `json:"comments"`
+	}
+	found := false
+	pid, okP := pathID(r, "pid")
+	tid, okT := pathID(r, "tid")
+	if okP && okT {
+		a.store.view(func(d *data) {
+			t := d.task(pid, tid)
+			if t == nil {
+				return
+			}
+			found = true
+			detail.Task = *t
+			detail.Comments = []Comment{}
+			for _, c := range d.Comments {
+				if c.TaskID == tid {
+					detail.Comments = append(detail.Comments, c)
+				}
+			}
+		})
+	}
+	if !found {
+		a.fail(w, http.StatusNotFound, "", "not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, detail)
+}
+
+func (a *server) patchTask(w http.ResponseWriter, r *http.Request, user int) {
+	var in struct {
+		Title       *string `json:"title"`
+		Description *string `json:"description"`
+		Status      *string `json:"status"`
+		AssigneeID  *int    `json:"assigneeId"`
+	}
+	if !a.decodeBody(w, r, []string{"title", "description", "status", "assigneeId"}, &in) {
+		return
+	}
+	if in.Title == nil && in.Description == nil && in.Status == nil && in.AssigneeID == nil {
 		a.fail(w, http.StatusBadRequest, "", "request body must change at least one field")
 		return
 	}
@@ -222,22 +324,149 @@ func (a *server) patchTask(w http.ResponseWriter, r *http.Request, user int) {
 		if t == nil {
 			return errNotFound
 		}
-		if fe := checkStatus(*in.Status); fe != nil {
+		next := *t
+		if in.Title != nil {
+			next.Title = *in.Title
+		}
+		if in.Description != nil {
+			next.Description = *in.Description
+		}
+		if in.Status != nil {
+			next.Status = *in.Status
+		}
+		if in.AssigneeID != nil {
+			next.AssigneeID = *in.AssigneeID
+		}
+		if fe := cmp.Or(
+			checkText("title", next.Title, true, 200, false),
+			checkText("description", next.Description, false, 5000, true),
+			checkStatus(next.Status),
+			checkAssignee(next.AssigneeID),
+		); fe != nil {
 			return fe
 		}
-		t.Status = *in.Status
-		out = *t
+		*t, out = next, next
 		return nil
 	})
-	var fe *fieldError
-	switch {
-	case err == nil:
-		writeJSON(w, http.StatusOK, out)
-	case errors.Is(err, errNotFound):
-		a.fail(w, http.StatusNotFound, "", "not found")
-	case errors.As(err, &fe):
-		a.fail(w, http.StatusBadRequest, fe.Field, fe.Message)
-	default:
-		a.serverError(w, err)
+	a.finish(w, err, http.StatusOK, out)
+}
+
+func (a *server) createComment(w http.ResponseWriter, r *http.Request, user int) {
+	var in struct {
+		Text string `json:"text"`
 	}
+	if !a.decodeBody(w, r, []string{"text"}, &in) {
+		return
+	}
+	pid, okP := pathID(r, "pid")
+	tid, okT := pathID(r, "tid")
+	if !okP || !okT {
+		a.fail(w, http.StatusNotFound, "", "not found")
+		return
+	}
+	var out Comment
+	err := a.store.update(func(d *data) error {
+		if d.task(pid, tid) == nil {
+			return errNotFound
+		}
+		if fe := checkText("text", in.Text, true, 2000, true); fe != nil {
+			return fe
+		}
+		out = Comment{ID: d.newID(), TaskID: tid, AuthorID: user, Text: in.Text, CreatedAt: now()}
+		d.Comments = append(d.Comments, out)
+		return nil
+	})
+	a.finish(w, err, http.StatusCreated, out)
+}
+
+// commentIDs reads pid, tid and cid from the path; any bad one means the comment does not exist.
+func commentIDs(r *http.Request) (pid, tid, cid int, ok bool) {
+	pid, okP := pathID(r, "pid")
+	tid, okT := pathID(r, "tid")
+	cid, okC := pathID(r, "cid")
+	return pid, tid, cid, okP && okT && okC
+}
+
+func (a *server) patchComment(w http.ResponseWriter, r *http.Request, user int) {
+	var in struct {
+		Text *string `json:"text"`
+	}
+	if !a.decodeBody(w, r, []string{"text"}, &in) {
+		return
+	}
+	if in.Text == nil {
+		a.fail(w, http.StatusBadRequest, "", "request body must change at least one field")
+		return
+	}
+	pid, tid, cid, ok := commentIDs(r)
+	if !ok {
+		a.fail(w, http.StatusNotFound, "", "not found")
+		return
+	}
+	var out Comment
+	err := a.store.update(func(d *data) error {
+		i := d.comment(pid, tid, cid)
+		switch {
+		case i < 0:
+			return errNotFound
+		case d.Comments[i].AuthorID != user:
+			return errNotAuthor
+		}
+		if fe := checkText("text", *in.Text, true, 2000, true); fe != nil {
+			return fe
+		}
+		d.Comments[i].Text = *in.Text
+		out = d.Comments[i]
+		return nil
+	})
+	a.finish(w, err, http.StatusOK, out)
+}
+
+func (a *server) deleteComment(w http.ResponseWriter, r *http.Request, user int) {
+	pid, tid, cid, ok := commentIDs(r)
+	if !ok {
+		a.fail(w, http.StatusNotFound, "", "not found")
+		return
+	}
+	err := a.store.update(func(d *data) error {
+		i := d.comment(pid, tid, cid)
+		switch {
+		case i < 0:
+			return errNotFound
+		case d.Comments[i].AuthorID != user:
+			return errNotAuthor
+		}
+		d.Comments = slices.Delete(d.Comments, i, i+1)
+		return nil
+	})
+	a.finish(w, err, http.StatusNoContent, nil)
+}
+
+func (a *server) createProject(w http.ResponseWriter, r *http.Request, user int) {
+	var in struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if !a.decodeBody(w, r, []string{"name", "description"}, &in) {
+		return
+	}
+	var out Project
+	// The duplicate check runs inside update so no other request can add the same name in between.
+	err := a.store.update(func(d *data) error {
+		if fe := cmp.Or(
+			checkText("name", in.Name, true, 100, false),
+			checkText("description", in.Description, false, 1000, true),
+		); fe != nil {
+			return fe
+		}
+		for _, p := range d.Projects {
+			if strings.EqualFold(p.Name, in.Name) {
+				return &fieldError{"name", "name is already used by another project"}
+			}
+		}
+		out = Project{ID: d.newID(), Name: in.Name, Description: in.Description, CreatedBy: user, CreatedAt: now()}
+		d.Projects = append(d.Projects, out)
+		return nil
+	})
+	a.finish(w, err, http.StatusCreated, out)
 }

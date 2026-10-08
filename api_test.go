@@ -4,14 +4,17 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var discard = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -430,5 +433,315 @@ func TestMoveTaskSaveFailureReturns500AndKeepsOldStatus(t *testing.T) {
 		http.StatusInternalServerError, "", "something went wrong; nothing was saved")
 	if st := taskIn(getBoard(t, h, "1"), 4).Status; st != "todo" {
 		t.Fatalf("status after failed save = %q, want todo", st)
+	}
+}
+
+func jsonBody(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+func decodeInto[T any](t *testing.T, rec *httptest.ResponseRecorder, status int) T {
+	t.Helper()
+	if rec.Code != status {
+		t.Fatalf("status = %d, want %d (body %s)", rec.Code, status, rec.Body)
+	}
+	var v T
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+type taskDetail struct {
+	Task
+	Comments []Comment `json:"comments"`
+}
+
+func getTask(t *testing.T, h http.Handler, path string) taskDetail {
+	t.Helper()
+	return decodeInto[taskDetail](t, serve(h, newReq("GET", path, "1", "")), http.StatusOK)
+}
+
+func TestCreateTaskDefaultsAndStoresInputExactly(t *testing.T) {
+	h, _ := newTestServer(t)
+	got := decodeInto[Task](t, serve(h, newReq("POST", "/api/projects/1/tasks", "3", `{"title":"Fix header"}`)), http.StatusCreated)
+	if got.ProjectID != 1 || got.Title != "Fix header" || got.Status != "todo" || got.AssigneeID != 0 || got.Description != "" || got.CreatedBy != 3 {
+		t.Fatalf("created task = %+v", got)
+	}
+	if at, err := time.Parse(time.RFC3339, got.CreatedAt); err != nil || at.Location() != time.UTC {
+		t.Fatalf("createdAt %q is not RFC 3339 UTC", got.CreatedAt)
+	}
+	if got.ID <= 17 {
+		t.Fatalf("new task ID %d is not above the sample IDs (max 17)", got.ID)
+	}
+
+	second := decodeInto[Task](t, serve(h, newReq("POST", "/api/projects/1/tasks", "3",
+		jsonBody(map[string]any{"title": "Two", "description": "a\nb", "assigneeId": 3}))), http.StatusCreated)
+	stored := getTask(t, h, "/api/projects/1/tasks/"+strconv.Itoa(second.ID))
+	if stored.Description != "a\nb" || stored.AssigneeID != 3 {
+		t.Fatalf("stored task = %+v", stored.Task)
+	}
+}
+
+func TestCreateTaskAcceptsLimits(t *testing.T) {
+	h, _ := newTestServer(t)
+	for _, body := range []map[string]any{
+		{"title": e(200)},
+		{"title": "Long description", "description": e(5000)},
+	} {
+		if rec := serve(h, newReq("POST", "/api/projects/1/tasks", "1", jsonBody(body))); rec.Code != http.StatusCreated {
+			t.Fatalf("status %d (body %s)", rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestCreateTaskRefusalsSaveNothing(t *testing.T) {
+	h, s := newTestServer(t)
+	refused := []struct {
+		name, path, contentType, body string
+		status                        int
+		field, message                string
+	}{
+		{"title over limit", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": e(201)}), 400, "title", "title must be 1 to 200 characters"},
+		{"title spaces", "/api/projects/1/tasks", "", `{"title":"   "}`, 400, "title", "title must be 1 to 200 characters"},
+		{"title line break", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": "a\nb"}), 400, "title", "title must be a single line"},
+		{"description over limit", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": "x", "description": e(5001)}), 400, "description", "description must be at most 5000 characters"},
+		{"description CR", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": "x", "description": "a\rb"}), 400, "description", "description must not contain control characters"},
+		{"assignee not a user", "/api/projects/1/tasks", "", `{"title":"x","assigneeId":6}`, 400, "assigneeId", "assigneeId must be 0 or a user ID from 1 to 5"},
+		{"assignee as string", "/api/projects/1/tasks", "", `{"title":"x","assigneeId":"3"}`, 400, "assigneeId", "assigneeId has the wrong type or is null"},
+		{"status on create", "/api/projects/1/tasks", "", `{"title":"x","status":"done"}`, 400, "", "request body has a field that is not allowed or has the wrong type"},
+		{"system field", "/api/projects/1/tasks", "", `{"title":"x","projectId":2}`, 400, "", "request body has a field that is not allowed or has the wrong type"},
+		{"null title", "/api/projects/1/tasks", "", `{"title":null}`, 400, "title", "title has the wrong type or is null"},
+		{"too large", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": strings.Repeat("a", 64<<10)}), 413, "", "request body is too large"},
+		{"not JSON", "/api/projects/1/tasks", "text/plain", `{"title":"x"}`, 415, "", "request body must be JSON"},
+		{"unknown project", "/api/projects/999/tasks", "", `{"title":"x"}`, 404, "", "not found"},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newReq("POST", tc.path, "1", tc.body)
+			if tc.contentType != "" {
+				r.Header.Set("Content-Type", tc.contentType)
+			}
+			wantError(t, serve(h, r), tc.status, tc.field, tc.message)
+			if n := len(snapshot(s).Tasks); n != 14 {
+				t.Fatalf("task count = %d after a refused create, want 14", n)
+			}
+		})
+	}
+}
+
+func TestTaskTextIsStoredAsPlainText(t *testing.T) {
+	h, _ := newTestServer(t)
+	const title = "<script>alert(1)</script>"
+	created := decodeInto[Task](t, serve(h, newReq("POST", "/api/projects/1/tasks", "1", jsonBody(map[string]any{"title": title}))), http.StatusCreated)
+	if got := getTask(t, h, "/api/projects/1/tasks/"+strconv.Itoa(created.ID)).Title; got != title {
+		t.Fatalf("title read back as %q, want %q", got, title)
+	}
+}
+
+func TestGetTaskHasEmptyCommentListAndChecksNesting(t *testing.T) {
+	h, _ := newTestServer(t)
+	rec := serve(h, newReq("GET", "/api/projects/1/tasks/4", "1", ""))
+	detail := decodeInto[taskDetail](t, rec, http.StatusOK)
+	if detail.ID != 4 || detail.Title != "Draft new homepage copy" || detail.CreatedBy != 1 {
+		t.Fatalf("task = %+v", detail.Task)
+	}
+	var raw map[string]json.RawMessage
+	json.Unmarshal(rec.Body.Bytes(), &raw)
+	if string(raw["comments"]) != "[]" {
+		t.Fatalf(`"comments" = %s, want []`, raw["comments"])
+	}
+	wantError(t, serve(h, newReq("GET", "/api/projects/1/tasks/9", "1", "")), http.StatusNotFound, "", "not found")
+}
+
+func TestAnyUserAssignsAndEditsTasks(t *testing.T) {
+	h, _ := newTestServer(t)
+	patch := func(user, body string) Task {
+		t.Helper()
+		return decodeInto[Task](t, serve(h, newReq("PATCH", "/api/projects/1/tasks/4", user, body)), http.StatusOK)
+	}
+	if got := patch("2", `{"assigneeId":4}`); got.AssigneeID != 4 || got.Status != "todo" {
+		t.Fatalf("after assign (Q2): %+v", got)
+	}
+	if got := patch("5", `{"assigneeId":0}`); got.AssigneeID != 0 {
+		t.Fatalf("after clearing assignee: %+v", got)
+	}
+	if got := patch("3", `{"title":"New","description":""}`); got.Title != "New" || got.Description != "" || got.Status != "todo" {
+		t.Fatalf("after edit: %+v", got)
+	}
+
+	wantError(t, serve(h, newReq("PATCH", "/api/projects/1/tasks/4", "1", `{"assigneeId":null}`)), 400, "assigneeId", "assigneeId has the wrong type or is null")
+	wantError(t, serve(h, newReq("PATCH", "/api/projects/1/tasks/4", "1", jsonBody(map[string]any{"title": "a\nb"}))), 400, "title", "title must be a single line")
+	if got := getTask(t, h, "/api/projects/1/tasks/4"); got.Title != "New" {
+		t.Fatalf("refused edit changed the title to %q", got.Title)
+	}
+}
+
+const commentsPath = "/api/projects/1/tasks/4/comments"
+
+func postComment(t *testing.T, h http.Handler, user, text string) Comment {
+	t.Helper()
+	return decodeInto[Comment](t, serve(h, newReq("POST", commentsPath, user, jsonBody(map[string]any{"text": text}))), http.StatusCreated)
+}
+
+func TestCreateCommentsListedInIDOrder(t *testing.T) {
+	h, _ := newTestServer(t)
+	first := postComment(t, h, "3", "Looks good")
+	if first.AuthorID != 3 || first.TaskID != 4 || first.Text != "Looks good" {
+		t.Fatalf("comment = %+v", first)
+	}
+	if _, err := time.Parse(time.RFC3339, first.CreatedAt); err != nil {
+		t.Fatalf("createdAt %q is not RFC 3339", first.CreatedAt)
+	}
+	second := postComment(t, h, "1", "Agreed")
+	var ids []int
+	for _, c := range getTask(t, h, "/api/projects/1/tasks/4").Comments {
+		ids = append(ids, c.ID)
+	}
+	if !reflect.DeepEqual(ids, []int{first.ID, second.ID}) || second.ID <= first.ID {
+		t.Fatalf("comment IDs = %v, want [%d %d] in increasing order", ids, first.ID, second.ID)
+	}
+}
+
+func TestCommentTextRules(t *testing.T) {
+	h, s := newTestServer(t)
+	postComment(t, h, "1", e(2000))
+	postComment(t, h, "1", "a\nb")
+	refused := []struct {
+		name, path, body string
+		status           int
+		field, message   string
+	}{
+		{"over limit", commentsPath, jsonBody(map[string]any{"text": e(2001)}), 400, "text", "text must be 1 to 2000 characters"},
+		{"only whitespace", commentsPath, jsonBody(map[string]any{"text": "  \n "}), 400, "text", "text must be 1 to 2000 characters"},
+		{"carriage return", commentsPath, jsonBody(map[string]any{"text": "a\rb"}), 400, "text", "text must not contain control characters"},
+		{"author in body", commentsPath, `{"authorId":2,"text":"x"}`, 400, "", "request body has a field that is not allowed or has the wrong type"},
+		{"task in another project", "/api/projects/1/tasks/9/comments", `{"text":"x"}`, 404, "", "not found"},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			wantError(t, serve(h, newReq("POST", tc.path, "1", tc.body)), tc.status, tc.field, tc.message)
+			if n := len(snapshot(s).Comments); n != 2 {
+				t.Fatalf("comment count = %d after a refused create, want 2", n)
+			}
+		})
+	}
+}
+
+func TestOnlyTheAuthorEditsAComment(t *testing.T) {
+	h, s := newTestServer(t)
+	c := postComment(t, h, "3", "Looks good")
+	path := commentsPath + "/" + strconv.Itoa(c.ID)
+	before, _ := os.ReadFile(s.path)
+
+	wantError(t, serve(h, newReq("PATCH", path, "1", `{"text":"Hijacked"}`)), http.StatusForbidden, "", "only the comment's author can change it")
+	// Ownership is checked before field rules, so a non-author learns nothing about validation.
+	wantError(t, serve(h, newReq("PATCH", path, "1", jsonBody(map[string]any{"text": e(2001)}))), http.StatusForbidden, "", "only the comment's author can change it")
+	if after, _ := os.ReadFile(s.path); string(after) != string(before) {
+		t.Fatal("data file changed after a refused edit")
+	}
+
+	rec := serve(h, newReq("PATCH", path, "3", `{"text":"Edited"}`))
+	var raw map[string]json.RawMessage
+	edited := decodeInto[Comment](t, rec, http.StatusOK)
+	json.Unmarshal(rec.Body.Bytes(), &raw)
+	if edited.Text != "Edited" || edited.CreatedAt != c.CreatedAt || edited.AuthorID != 3 {
+		t.Fatalf("edited comment = %+v, want text Edited and createdAt %q", edited, c.CreatedAt)
+	}
+	if len(raw) != 5 {
+		t.Fatalf("edited comment has fields %v; FR-022 allows no edited mark", slices.Collect(maps.Keys(raw)))
+	}
+	if got := getTask(t, h, "/api/projects/1/tasks/4").Comments[0].Text; got != "Edited" {
+		t.Fatalf("stored text = %q, want Edited", got)
+	}
+}
+
+func TestOnlyTheAuthorDeletesAComment(t *testing.T) {
+	h, s := newTestServer(t)
+	c := postComment(t, h, "3", "Looks good")
+	path := commentsPath + "/" + strconv.Itoa(c.ID)
+
+	wantError(t, serve(h, newReq("DELETE", path, "1", "")), http.StatusForbidden, "", "only the comment's author can change it")
+	if n := len(getTask(t, h, "/api/projects/1/tasks/4").Comments); n != 1 {
+		t.Fatalf("comment count after a refused delete = %d, want 1", n)
+	}
+	wantError(t, serve(h, newReq("DELETE", "/api/projects/1/tasks/5/comments/"+strconv.Itoa(c.ID), "3", "")), http.StatusNotFound, "", "not found")
+
+	if rec := serve(h, newReq("DELETE", path, "3", "")); rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("author delete: status %d, body %q; want 204 and no body", rec.Code, rec.Body)
+	}
+	if n := len(getTask(t, h, "/api/projects/1/tasks/4").Comments); n != 0 {
+		t.Fatalf("comment still listed after delete")
+	}
+	again, err := openStore(s.path, seedTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(snapshot(again).Comments); n != 0 {
+		t.Fatalf("deleted comment came back after reopening the store")
+	}
+	wantError(t, serve(h, newReq("DELETE", path, "3", "")), http.StatusNotFound, "", "not found")
+	wantError(t, serve(h, newReq("PATCH", path, "3", `{"text":"x"}`)), http.StatusNotFound, "", "not found")
+
+	if next := postComment(t, h, "3", "New"); next.ID <= c.ID {
+		t.Fatalf("new comment ID %d reuses or precedes deleted ID %d", next.ID, c.ID)
+	}
+}
+
+func TestCreateProjectAppearsWithEmptyBoard(t *testing.T) {
+	h, _ := newTestServer(t)
+	p := decodeInto[Project](t, serve(h, newReq("POST", "/api/projects", "2", `{"name":"Website"}`)), http.StatusCreated)
+	if p.Name != "Website" || p.Description != "" || p.CreatedBy != 2 || p.ID <= 17 {
+		t.Fatalf("created project = %+v", p)
+	}
+	list := decodeInto[[]Project](t, serve(h, newReq("GET", "/api/projects", "4", "")), http.StatusOK)
+	if len(list) != 4 || list[3].ID != p.ID {
+		t.Fatalf("project list = %+v, want the new project last", list)
+	}
+	rec := serve(h, newReq("GET", "/api/projects/"+strconv.Itoa(p.ID), "4", ""))
+	var raw map[string]json.RawMessage
+	json.Unmarshal(rec.Body.Bytes(), &raw)
+	if rec.Code != http.StatusOK || string(raw["tasks"]) != "[]" {
+		t.Fatalf("new board: status %d, tasks %s", rec.Code, raw["tasks"])
+	}
+}
+
+func TestCreateProjectAcceptsLimits(t *testing.T) {
+	h, _ := newTestServer(t)
+	for _, body := range []map[string]any{
+		{"name": e(100)},
+		{"name": "Long description", "description": e(1000)},
+	} {
+		if rec := serve(h, newReq("POST", "/api/projects", "1", jsonBody(body))); rec.Code != http.StatusCreated {
+			t.Fatalf("status %d (body %s)", rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestCreateProjectRefusalsSaveNothing(t *testing.T) {
+	h, s := newTestServer(t)
+	decodeInto[Project](t, serve(h, newReq("POST", "/api/projects", "1", `{"name":"Website"}`)), http.StatusCreated)
+	refused := []struct {
+		name, body     string
+		field, message string
+	}{
+		{"same name other case", `{"name":"website"}`, "name", "name is already used by another project"},
+		{"seeded name other case", `{"name":"WEBSITE REFRESH"}`, "name", "name is already used by another project"},
+		{"name over limit", jsonBody(map[string]any{"name": e(101)}), "name", "name must be 1 to 100 characters"},
+		{"name line break", jsonBody(map[string]any{"name": "a\nb"}), "name", "name must be a single line"},
+		{"description over limit", jsonBody(map[string]any{"name": "x", "description": e(1001)}), "description", "description must be at most 1000 characters"},
+		{"system field", `{"id":9,"name":"x"}`, "", "request body has a field that is not allowed or has the wrong type"},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			wantError(t, serve(h, newReq("POST", "/api/projects", "1", tc.body)), http.StatusBadRequest, tc.field, tc.message)
+			if n := len(snapshot(s).Projects); n != 4 {
+				t.Fatalf("project count = %d after a refused create, want 4", n)
+			}
+		})
 	}
 }

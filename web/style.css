@@ -163,3 +163,93 @@ dialog select {
   font: inherit;
   margin-bottom: 1rem;
 }
+
+dialog {
+  width: min(36rem, 90vw);
+}
+
+.field {
+  margin-bottom: 0.75rem;
+}
+
+.field input,
+.field textarea,
+.field select {
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 0.9em;
+  margin: 0.25rem 0 0;
+}
+
+.field-error:empty {
+  display: none;
+}
+
+.description {
+  white-space: pre-wrap;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9em;
+}
+
+details {
+  margin: 1rem 0;
+}
+
+summary {
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.comments h3 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.comment-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.comment {
+  border-top: 1px solid var(--line);
+  padding: 0.5rem 0;
+}
+
+.comment .meta {
+  margin: 0;
+}
+
+.comment .text {
+  white-space: pre-wrap;
+  margin: 0.25rem 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+form button + button {
+  margin-left: 0.5rem;
+}
+
+.new-project {
+  max-width: 24rem;
+  margin-top: 2rem;
+}
+
+.new-project h2 {
+  font-size: 1.1rem;
+}

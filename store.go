@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 )
@@ -155,4 +156,12 @@ func (d *data) task(pid, tid int) *Task {
 		}
 	}
 	return nil
+}
+
+// comment returns the index of comment cid, or -1 unless it sits under task tid in project pid.
+func (d *data) comment(pid, tid, cid int) int {
+	if d.task(pid, tid) == nil {
+		return -1
+	}
+	return slices.IndexFunc(d.Comments, func(c Comment) bool { return c.ID == cid && c.TaskID == tid })
 }
