@@ -182,6 +182,28 @@ func TestProjectsNeedAValidPickedUser(t *testing.T) {
 	}
 }
 
+func TestRoutesWithoutAPickedUserAreRefused(t *testing.T) {
+	h, s := newTestServer(t)
+	c := postComment(t, h, "1", "Mine")
+	comment := commentsPath + "/" + strconv.Itoa(c.ID)
+	for _, r := range []struct{ method, path, body string }{
+		{"POST", "/api/projects", `{"name":"x"}`},
+		{"POST", "/api/projects/1/tasks", `{"title":"x"}`},
+		{"GET", "/api/projects/1/tasks/4", ""},
+		{"POST", commentsPath, `{"text":"x"}`},
+		{"PATCH", comment, `{"text":"x"}`},
+		{"DELETE", comment, ""},
+	} {
+		t.Run(r.method+" "+r.path, func(t *testing.T) {
+			before, _ := os.ReadFile(s.path)
+			wantError(t, serve(h, newReq(r.method, r.path, "", r.body)), http.StatusUnauthorized, "", "pick a user first")
+			if after, _ := os.ReadFile(s.path); string(after) != string(before) {
+				t.Fatal("data file changed after a refused request")
+			}
+		})
+	}
+}
+
 func TestUnknownAPIPathIsJSON404(t *testing.T) {
 	h, _ := newTestServer(t)
 	wantError(t, serve(h, newReq("GET", "/api/nope", "1", "")), http.StatusNotFound, "", "not found")
@@ -516,6 +538,10 @@ func TestCreateTaskRefusalsSaveNothing(t *testing.T) {
 		{"status on create", "/api/projects/1/tasks", "", `{"title":"x","status":"done"}`, 400, "", "request body has a field that is not allowed or has the wrong type"},
 		{"system field", "/api/projects/1/tasks", "", `{"title":"x","projectId":2}`, 400, "", "request body has a field that is not allowed or has the wrong type"},
 		{"null title", "/api/projects/1/tasks", "", `{"title":null}`, 400, "title", "title has the wrong type or is null"},
+		{"invalid UTF-8", "/api/projects/1/tasks", "", "{\"title\":\"bad\xffbyte\"}", 400, "", "request body must be one JSON object"},
+		{"lone high surrogate", "/api/projects/1/tasks", "", `{"title":"bad\ud800esc"}`, 400, "", "request body must be one JSON object"},
+		{"lone low surrogate", "/api/projects/1/tasks", "", `{"title":"bad\udc00esc"}`, 400, "", "request body must be one JSON object"},
+		{"high surrogate without its pair", "/api/projects/1/tasks", "", `{"title":"bad\ud800\u0041"}`, 400, "", "request body must be one JSON object"},
 		{"too large", "/api/projects/1/tasks", "", jsonBody(map[string]any{"title": strings.Repeat("a", 64<<10)}), 413, "", "request body is too large"},
 		{"not JSON", "/api/projects/1/tasks", "text/plain", `{"title":"x"}`, 415, "", "request body must be JSON"},
 		{"unknown project", "/api/projects/999/tasks", "", `{"title":"x"}`, 404, "", "not found"},
@@ -540,6 +566,21 @@ func TestTaskTextIsStoredAsPlainText(t *testing.T) {
 	created := decodeInto[Task](t, serve(h, newReq("POST", "/api/projects/1/tasks", "1", jsonBody(map[string]any{"title": title}))), http.StatusCreated)
 	if got := getTask(t, h, "/api/projects/1/tasks/"+strconv.Itoa(created.ID)).Title; got != title {
 		t.Fatalf("title read back as %q, want %q", got, title)
+	}
+}
+
+func TestValidUnicodeIsStoredExactly(t *testing.T) {
+	h, _ := newTestServer(t)
+	for body, want := range map[string]string{
+		"{\"title\":\"typed \uFFFD\"}":  "typed \uFFFD",
+		`{"title":"escaped \ufffd"}`:    "escaped \uFFFD",
+		`{"title":"pair \ud83d\ude00"}`: "pair 😀",
+		`{"title":"text \\ud800"}`:      `text \ud800`,
+	} {
+		created := decodeInto[Task](t, serve(h, newReq("POST", "/api/projects/1/tasks", "1", body)), http.StatusCreated)
+		if got := getTask(t, h, "/api/projects/1/tasks/"+strconv.Itoa(created.ID)).Title; got != want {
+			t.Errorf("title read back as %q, want %q", got, want)
+		}
 	}
 }
 

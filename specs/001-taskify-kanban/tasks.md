@@ -249,3 +249,12 @@ Task: "T028 Style the comment list in web/style.css"
 - Never weaken an existing green test to make new code pass; change a test only with a stated
   reason
 - Commit after each task or each red/green pair
+
+---
+
+## Phase 8: Convergence
+
+- [X] T037 CRITICAL: Make `decodeBody` in `api.go` refuse a body that is not valid UTF-8 or that holds an escaped lone surrogate (such as `"\ud800"`) with 400 `request body must be one JSON object`, instead of letting `encoding/json` save U+FFFD in its place (seen on 2026-10-08: a title with byte `0xFF` and `"bad\ud800esc"` each returned 201 and were stored with `�`). Write the cases in `api_test.go` first and see them fail on their assertions: both inputs → 400 and the task count unchanged, while a typed `�` and a valid pair such as `"\ud83d\ude00"` are still accepted, per Constitution II and data-model §Validation definitions (contradicts)
+- [X] T038 CRITICAL: Add "no `X-Taskify-User` → 401 `pick a user first`" cases in `api_test.go` for the six routes that have none: `POST /api/projects`, `POST /api/projects/{pid}/tasks`, `GET /api/projects/{pid}/tasks/{tid}`, and `POST`, `PATCH`, `DELETE` on comments; for the write routes also assert the data file bytes are unchanged. The current code already passes, so prove each case can fail by bypassing `requireUser` for that one route, seeing it red, then restoring it, per Constitution Test gate (partial)
+- [X] T039 CRITICAL: Pin `govulncheck` to one fixed version that builds with go1.25.0, instead of `@latest`, in `quickstart.md` §Before a release and `research.md` R12, with the reason; on 2026-10-08 `@latest` resolved to v1.8.0, which requires go ≥ 1.26.0, so the T036 command cannot run on this project's go1.25.0, per Constitution IV (contradicts)
+- [X] T040 Show the project description under the project name on the board in `web/app.js`, as text with line breaks kept (reuse the `.description` style), because it is saved but shown on no screen, per FR-026 (partial)

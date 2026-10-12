@@ -146,13 +146,15 @@ unknowns. Each entry records a decision the stack left open. Stdlib APIs were ch
 
 ## R12. Vulnerability scanning
 
-- **Decision**: Before a release, run `go run golang.org/x/vuln/cmd/govulncheck@latest ./...`.
-  It is not added to `go.mod` and ships nothing in the binary.
+- **Decision**: Before a release, run `go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...`.
+  It is not added to `go.mod` and ships nothing in the binary. The version is pinned
+  (constitution IV); v1.7.0 is the newest release that builds on go1.25.0.
 - **Rationale**: The constitution requires an audit before release. With zero third-party
   modules, the remaining risk is the Go standard library itself, which `govulncheck` (the Go
   team's official scanner) checks. The `go` command has no built-in audit.
 - **Alternatives considered**: Skipping the scan because there are no dependencies — misses
-  stdlib CVEs fixed in Go patch releases.
+  stdlib CVEs fixed in Go patch releases. `@latest` — not pinned, and on 2026-10-08 it meant
+  v1.8.0, which needs go 1.26.0 and so cannot run on this project's go1.25.0.
 
 ## R13. HTTPS
 

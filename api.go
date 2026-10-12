@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 //go:embed web
@@ -144,7 +146,8 @@ func (a *server) decodeBody(w http.ResponseWriter, r *http.Request, allowed []st
 	if err == nil && dec.Decode(new(json.RawMessage)) != io.EOF {
 		err = errors.New("more than one JSON value")
 	}
-	if err != nil || fields == nil {
+	// encoding/json would silently store U+FFFD for these; constitution II says refuse, never clean.
+	if err != nil || fields == nil || !utf8.Valid(b) || loneSurrogate(b) {
 		a.fail(w, http.StatusBadRequest, "", "request body must be one JSON object")
 		return false
 	}
@@ -171,6 +174,33 @@ func (a *server) decodeBody(w http.ResponseWriter, r *http.Request, allowed []st
 		return false
 	}
 	return true
+}
+
+// b must already be valid JSON: that guarantees a byte after each backslash and 4 hex digits after each \u.
+func loneSurrogate(b []byte) bool {
+	hex := func(h []byte) rune {
+		n, _ := strconv.ParseUint(string(h), 16, 16)
+		return rune(n)
+	}
+	for i := 0; i < len(b); i++ {
+		if b[i] != '\\' {
+			continue
+		}
+		i++
+		if b[i] != 'u' {
+			continue
+		}
+		r := hex(b[i+1 : i+5])
+		i += 4
+		if !utf16.IsSurrogate(r) {
+			continue
+		}
+		if i+6 >= len(b) || b[i+1] != '\\' || b[i+2] != 'u' || utf16.DecodeRune(r, hex(b[i+3:i+7])) == utf8.RuneError {
+			return true
+		}
+		i += 6
+	}
+	return false
 }
 
 func (a *server) listProjects(w http.ResponseWriter, r *http.Request, user int) {

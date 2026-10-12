@@ -95,5 +95,7 @@ to connect (SC-009).
 ## Before a release
 
 ```sh
-go run golang.org/x/vuln/cmd/govulncheck@latest ./...   # any finding blocks the release
+# Pinned on purpose; read research.md R12 before changing the version.
+# Run it with the same Go that builds the release: it checks that Go's standard library.
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...   # any finding blocks the release
 ```

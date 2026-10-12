@@ -331,6 +331,7 @@ async function showBoard(pid) {
   app.replaceChildren(
     el('p', {}, el('a', { href: '#/projects' }, '← All projects')),
     el('h1', {}, project.name),
+    ...(project.description ? [el('p', { class: 'description' }, project.description)] : []),
     el('button', { type: 'button', onclick: () => openNewTask(pid) }, 'New task'),
     errorBox,
     el('div', { class: 'board' }, ...columns),
